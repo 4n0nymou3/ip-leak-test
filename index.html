@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IP Leak Test - WebRTC & DNS Security</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔒 IP LEAK DETECTOR</h1>
+            <p class="subtitle">Complete IP, DNS & WebRTC Security Test</p>
+        </header>
+
+        <div class="refresh-section">
+            <button id="refreshBtn" class="refresh-btn">
+                <span class="refresh-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                    </svg>
+                </span>
+                <span>Refresh Data</span>
+            </button>
+            <button id="exportBtn" class="refresh-btn" style="margin-left: 10px;">
+                <span>Export Data</span>
+            </button>
+        </div>
+
+        <div class="status-section">
+            <div class="status-card" id="statusCard">
+                <div class="status-icon">⏳</div>
+                <div class="status-text">Loading...</div>
+            </div>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="cloudflare">Cloudflare Targets</button>
+            <button class="tab-btn" data-tab="other">Other Targets</button>
+            <button class="tab-btn" data-tab="webrtc">WebRTC Test</button>
+            <button class="tab-btn" data-tab="dns">DNS Test</button>
+            <button class="tab-btn" data-tab="advanced">Advanced Info</button>
+        </div>
+
+        <div class="tab-content active" id="cloudflare">
+            <div class="info-grid">
+                <div class="info-card">
+                    <div class="info-label">IP Address</div>
+                    <div class="info-value" id="cf-ip">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Country</div>
+                    <div class="info-value" id="cf-country">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">City</div>
+                    <div class="info-value" id="cf-city">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">ISP / Organization</div>
+                    <div class="info-value" id="cf-isp">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Region</div>
+                    <div class="info-value" id="cf-region">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Timezone</div>
+                    <div class="info-value" id="cf-timezone">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Postal Code</div>
+                    <div class="info-value" id="cf-postal">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Coordinates</div>
+                    <div class="info-value" id="cf-coords">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">ASN</div>
+                    <div class="info-value" id="cf-asn">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="cf-map" class="map-container"></div>
+        </div>
+
+        <div class="tab-content" id="other">
+            <div class="info-grid">
+                <div class="info-card">
+                    <div class="info-label">IP Address</div>
+                    <div class="info-value" id="other-ip">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Country</div>
+                    <div class="info-value" id="other-country">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">City</div>
+                    <div class="info-value" id="other-city">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">ISP / Organization</div>
+                    <div class="info-value" id="other-isp">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Region</div>
+                    <div class="info-value" id="other-region">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Timezone</div>
+                    <div class="info-value" id="other-timezone">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Postal Code</div>
+                    <div class="info-value" id="other-postal">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">Coordinates</div>
+                    <div class="info-value" id="other-coords">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">ASN</div>
+                    <div class="info-value" id="other-asn">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="other-map" class="map-container"></div>
+        </div>
+
+        <div class="tab-content" id="webrtc">
+            <div class="test-result-box">
+                <div class="test-header">
+                    <h3>🌐 WebRTC Leak Test</h3>
+                    <div class="test-status" id="webrtc-status">
+                        <span class="status-badge status-loading">Testing...</span>
+                    </div>
+                </div>
+                <div class="test-description">
+                    WebRTC can expose your real IP address even when using VPN or Proxy.
+                </div>
+                <div class="ip-list" id="webrtc-ips">
+                    <div class="skeleton-list">
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="dns">
+            <div class="test-result-box">
+                <div class="test-header">
+                    <h3>🔍 DNS Leak Test</h3>
+                    <div class="test-status" id="dns-status">
+                        <span class="status-badge status-loading">Testing...</span>
+                    </div>
+                </div>
+                <div class="test-description">
+                    DNS leak test to ensure your real DNS servers are not exposed. Note: This is a basic accessibility test. For comprehensive DNS leak detection, consider using dedicated tools with backend support.
+                </div>
+                <div class="dns-servers" id="dns-servers">
+                    <div class="skeleton-list">
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="advanced">
+            <div class="info-grid">
+                <div class="info-card">
+                    <div class="info-label">IPv6 Address</div>
+                    <div class="info-value" id="ipv6-ip">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">IPv6 Country</div>
+                    <div class="info-value" id="ipv6-country">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">IPv6 City</div>
+                    <div class="info-value" id="ipv6-city">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                <div class="info-card">
+                    <div class="info-label">IPv6 ISP</div>
+                    <div class="info-value" id="ipv6-isp">
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Last Update: <span id="lastUpdate">Never</span></p>
+            <p class="designer">Designed by: <a href="https://t.me/BXAMbot" target="_blank" rel="noopener noreferrer">Anonymous</a></p>
+        </footer>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/tests.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
