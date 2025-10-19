@@ -5,10 +5,15 @@ class IPLeakTester {
         this.ipv6Data = null;
         this.webrtcIPs = [];
         this.dnsResults = [];
+        this.fingerprintResults = null;
+        this.timezoneResults = null;
+        this.portResults = [];
         this.isLoading = false;
         this.testStartTime = null;
         this.cfMap = null;
         this.otherMap = null;
+        this.totalTests = 8;
+        this.completedTests = 0;
         
         this.init();
     }
@@ -70,6 +75,10 @@ class IPLeakTester {
         this.ipv6Data = null;
         this.webrtcIPs = [];
         this.dnsResults = [];
+        this.fingerprintResults = null;
+        this.timezoneResults = null;
+        this.portResults = [];
+        this.completedTests = 0;
         
         if (Tests.webrtcConnection) {
             Tests.webrtcConnection.close();
@@ -106,6 +115,15 @@ class IPLeakTester {
         document.getElementById('dns-status').innerHTML = '<span class="status-badge status-loading">Testing...</span>';
         document.getElementById('dns-servers').innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
         
+        document.getElementById('fingerprint-status').innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+        document.getElementById('fingerprint-results').innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+        
+        document.getElementById('timezone-status').innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+        document.getElementById('timezone-results').innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div></div>';
+        
+        document.getElementById('port-status').innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+        document.getElementById('port-results').innerHTML = '<div class="skeleton-list"><div class="skeleton"></div></div>';
+        
         document.getElementById('cf-map').innerHTML = '';
         document.getElementById('cf-map').style.display = 'none';
         document.getElementById('other-map').innerHTML = '';
@@ -118,14 +136,19 @@ class IPLeakTester {
             other: this.otherData,
             ipv6: this.ipv6Data,
             webrtc: this.webrtcIPs,
-            dns: this.dnsResults
+            dns: this.dnsResults,
+            fingerprint: this.fingerprintResults,
+            timezone: this.timezoneResults,
+            ports: this.portResults,
+            timestamp: new Date().toISOString()
         };
         
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'ip-leak-test-results.json';
+        const timestamp = new Date().toISOString().split('T')[0];
+        a.download = `ip-leak-test-${timestamp}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -154,6 +177,25 @@ class IPLeakTester {
         }, 100);
     }
     
+    updateProgress(completed) {
+        this.completedTests = completed;
+        const percentage = Math.round((completed / this.totalTests) * 100);
+        
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const progressContainer = document.getElementById('progressBarContainer');
+        
+        progressContainer.classList.add('active');
+        progressBar.style.width = `${percentage}%`;
+        progressText.textContent = `${percentage}%`;
+        
+        if (completed >= this.totalTests) {
+            setTimeout(() => {
+                progressContainer.classList.remove('active');
+            }, 1000);
+        }
+    }
+    
     async startInitialTests() {
         if (this.isLoading) {
             console.log('Tests already running...');
@@ -162,15 +204,60 @@ class IPLeakTester {
         
         this.isLoading = true;
         this.testStartTime = Date.now();
+        this.completedTests = 0;
         this.updateStatus('loading', 'Running security tests...');
+        this.updateProgress(0);
         
         try {
+            const cloudflarePromise = API.fetchWithRetry(() => API.fetchCloudflareData()).then(result => {
+                this.updateProgress(++this.completedTests);
+                return result;
+            });
+            
+            const ipifyPromise = API.fetchWithRetry(() => API.fetchIpifyData()).then(result => {
+                this.updateProgress(++this.completedTests);
+                return result;
+            });
+            
+            const ipv6Promise = API.fetchWithRetry(() => API.fetchIPv6Data()).then(result => {
+                this.updateProgress(++this.completedTests);
+                return result;
+            });
+            
+            const webrtcPromise = this.runWebRTCTest().then(result => {
+                this.updateProgress(++this.completedTests);
+                return result;
+            });
+            
+            const dnsPromise = this.runDNSTest().then(result => {
+                this.updateProgress(++this.completedTests);
+                return result;
+            });
+            
+            const fingerprintPromise = this.runFingerprintTest().then(result => {
+                this.updateProgress(++this.completedTests);
+                return result;
+            });
+            
+            const timezonePromise = this.runTimezoneTest().then(result => {
+                this.updateProgress(++this.completedTests);
+                return result;
+            });
+            
+            const portPromise = this.runPortScanTest().then(result => {
+                this.updateProgress(++this.completedTests);
+                return result;
+            });
+            
             const results = await Promise.allSettled([
-                API.fetchWithRetry(() => API.fetchCloudflareData()),
-                API.fetchWithRetry(() => API.fetchIpifyData()),
-                API.fetchWithRetry(() => API.fetchIPv6Data()),
-                this.runWebRTCTest(),
-                this.runDNSTest()
+                cloudflarePromise,
+                ipifyPromise,
+                ipv6Promise,
+                webrtcPromise,
+                dnsPromise,
+                fingerprintPromise,
+                timezonePromise,
+                portPromise
             ]);
             
             this.cloudflareData = results[0].status === 'fulfilled' ? results[0].value : null;
@@ -248,7 +335,7 @@ class IPLeakTester {
         }
         
         const existingIP = Array.from(ipsContainer.children).find(
-            child => child.querySelector('.ip-address').textContent === ipInfo.ip
+            child => child.querySelector('.ip-address') && child.querySelector('.ip-address').textContent === ipInfo.ip
         );
         
         if (existingIP) {
@@ -347,6 +434,152 @@ class IPLeakTester {
             }
             
             serversContainer.appendChild(dnsElement);
+        });
+    }
+    
+    async runFingerprintTest() {
+        const statusEl = document.getElementById('fingerprint-status');
+        statusEl.innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+        
+        const resultsContainer = document.getElementById('fingerprint-results');
+        resultsContainer.innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+        
+        try {
+            this.fingerprintResults = await FingerprintTests.performFingerprintTest();
+            
+            this.displayFingerprintResults();
+            
+            statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Detectable</span>';
+        } catch (error) {
+            console.error('Fingerprint test error:', error);
+            statusEl.innerHTML = '<span class="status-badge status-leak">✗ Error</span>';
+            resultsContainer.innerHTML = '<div class="fingerprint-item"><div class="fingerprint-label">✗ Test failed</div></div>';
+        }
+    }
+    
+    displayFingerprintResults() {
+        const resultsContainer = document.getElementById('fingerprint-results');
+        resultsContainer.innerHTML = '';
+        
+        if (!this.fingerprintResults) {
+            resultsContainer.innerHTML = '<div class="fingerprint-item"><div class="fingerprint-label">No results</div></div>';
+            return;
+        }
+        
+        const items = [
+            { label: 'Canvas Fingerprint', value: this.fingerprintResults.canvas.detected ? `Hash: ${this.fingerprintResults.canvas.hash}` : 'Not detected' },
+            { label: 'WebGL Renderer', value: this.fingerprintResults.webgl.detected ? `${this.fingerprintResults.webgl.renderer}` : 'Not available' },
+            { label: 'Fonts Detected', value: `${this.fingerprintResults.fonts.count} fonts: ${this.fingerprintResults.fonts.fonts}` },
+            { label: 'Screen Resolution', value: `${this.fingerprintResults.screen.resolution} (${this.fingerprintResults.screen.colorDepth})` },
+            { label: 'Platform', value: this.fingerprintResults.platform.platform },
+            { label: 'Languages', value: this.fingerprintResults.languages.all },
+            { label: 'Hardware Cores', value: this.fingerprintResults.hardware.cores },
+            { label: 'Touch Support', value: this.fingerprintResults.hardware.touchSupport ? 'Yes' : 'No' }
+        ];
+        
+        items.forEach(item => {
+            const element = document.createElement('div');
+            element.className = 'fingerprint-item';
+            element.innerHTML = `
+                <div class="fingerprint-label">${item.label}</div>
+                <div class="fingerprint-value">${item.value}</div>
+            `;
+            resultsContainer.appendChild(element);
+        });
+    }
+    
+    async runTimezoneTest() {
+        const statusEl = document.getElementById('timezone-status');
+        statusEl.innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+        
+        const resultsContainer = document.getElementById('timezone-results');
+        resultsContainer.innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div></div>';
+        
+        try {
+            this.timezoneResults = await FingerprintTests.performTimezoneTest();
+            
+            this.displayTimezoneResults();
+            
+            if (this.timezoneResults.leakDetected) {
+                statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Leak Possible</span>';
+            } else {
+                statusEl.innerHTML = '<span class="status-badge status-safe">✓ Normal</span>';
+            }
+        } catch (error) {
+            console.error('Timezone test error:', error);
+            statusEl.innerHTML = '<span class="status-badge status-leak">✗ Error</span>';
+            resultsContainer.innerHTML = '<div class="timezone-item"><div class="timezone-label">✗ Test failed</div></div>';
+        }
+    }
+    
+    displayTimezoneResults() {
+        const resultsContainer = document.getElementById('timezone-results');
+        resultsContainer.innerHTML = '';
+        
+        if (!this.timezoneResults) {
+            resultsContainer.innerHTML = '<div class="timezone-item"><div class="timezone-label">No results</div></div>';
+            return;
+        }
+        
+        const items = [
+            { label: 'Timezone', value: this.timezoneResults.timezone },
+            { label: 'UTC Offset', value: this.timezoneResults.offset },
+            { label: 'Browser Time', value: this.timezoneResults.browserTime }
+        ];
+        
+        items.forEach(item => {
+            const element = document.createElement('div');
+            element.className = 'timezone-item';
+            element.innerHTML = `
+                <div class="timezone-label">${item.label}</div>
+                <div class="timezone-value">${item.value}</div>
+            `;
+            resultsContainer.appendChild(element);
+        });
+    }
+    
+    async runPortScanTest() {
+        const statusEl = document.getElementById('port-status');
+        statusEl.innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+        
+        const resultsContainer = document.getElementById('port-results');
+        resultsContainer.innerHTML = '<div class="skeleton-list"><div class="skeleton"></div></div>';
+        
+        try {
+            this.portResults = await FingerprintTests.performPortScanTest();
+            
+            this.displayPortResults();
+            
+            const openPorts = this.portResults.filter(p => p.status === 'Potentially Open').length;
+            if (openPorts > 0) {
+                statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Ports Detected</span>';
+            } else {
+                statusEl.innerHTML = '<span class="status-badge status-safe">✓ Secure</span>';
+            }
+        } catch (error) {
+            console.error('Port scan test error:', error);
+            statusEl.innerHTML = '<span class="status-badge status-leak">✗ Error</span>';
+            resultsContainer.innerHTML = '<div class="port-item"><div class="port-label">✗ Test failed</div></div>';
+        }
+    }
+    
+    displayPortResults() {
+        const resultsContainer = document.getElementById('port-results');
+        resultsContainer.innerHTML = '';
+        
+        if (!this.portResults || this.portResults.length === 0) {
+            resultsContainer.innerHTML = '<div class="port-item"><div class="port-label">No results</div></div>';
+            return;
+        }
+        
+        this.portResults.forEach(result => {
+            const element = document.createElement('div');
+            element.className = 'port-item';
+            element.innerHTML = `
+                <div class="port-label">Port ${result.port}</div>
+                <div class="port-status">${result.status}</div>
+            `;
+            resultsContainer.appendChild(element);
         });
     }
     
