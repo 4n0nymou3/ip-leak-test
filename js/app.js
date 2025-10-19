@@ -44,16 +44,72 @@ class IPLeakTester {
     }
     
     async handleRefresh() {
-        if (this.isLoading) return;
+        if (this.isLoading) {
+            console.log('Already loading, please wait...');
+            return;
+        }
         
         const refreshBtn = document.getElementById('refreshBtn');
         refreshBtn.classList.add('loading');
         refreshBtn.disabled = true;
         
+        this.resetData();
+        this.resetUI();
+        
         await this.startInitialTests();
         
-        refreshBtn.classList.remove('loading');
-        refreshBtn.disabled = false;
+        setTimeout(() => {
+            refreshBtn.classList.remove('loading');
+            refreshBtn.disabled = false;
+        }, 500);
+    }
+    
+    resetData() {
+        this.cloudflareData = null;
+        this.otherData = null;
+        this.ipv6Data = null;
+        this.webrtcIPs = [];
+        this.dnsResults = [];
+        
+        if (Tests.webrtcConnection) {
+            Tests.webrtcConnection.close();
+            Tests.webrtcConnection = null;
+        }
+        Tests.detectedIPs.clear();
+        
+        if (this.cfMap) {
+            this.cfMap.remove();
+            this.cfMap = null;
+        }
+        if (this.otherMap) {
+            this.otherMap.remove();
+            this.otherMap = null;
+        }
+    }
+    
+    resetUI() {
+        this.showSkeletonLoading('cloudflare');
+        this.showSkeletonLoading('other');
+        
+        const ipv6Fields = ['ip', 'country', 'city', 'isp'];
+        ipv6Fields.forEach(field => {
+            const el = document.getElementById(`ipv6-${field}`);
+            if (el) {
+                el.innerHTML = '<div class="skeleton"></div>';
+                el.style.color = '';
+            }
+        });
+        
+        document.getElementById('webrtc-status').innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+        document.getElementById('webrtc-ips').innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div></div>';
+        
+        document.getElementById('dns-status').innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+        document.getElementById('dns-servers').innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+        
+        document.getElementById('cf-map').innerHTML = '';
+        document.getElementById('cf-map').style.display = 'none';
+        document.getElementById('other-map').innerHTML = '';
+        document.getElementById('other-map').style.display = 'none';
     }
     
     handleExport() {
@@ -99,47 +155,57 @@ class IPLeakTester {
     }
     
     async startInitialTests() {
+        if (this.isLoading) {
+            console.log('Tests already running...');
+            return;
+        }
+        
         this.isLoading = true;
         this.testStartTime = Date.now();
         this.updateStatus('loading', 'Running security tests...');
         
-        const results = await Promise.allSettled([
-            API.fetchWithRetry(() => API.fetchCloudflareData()),
-            API.fetchWithRetry(() => API.fetchIpifyData()),
-            API.fetchWithRetry(() => API.fetchIPv6Data()),
-            this.runWebRTCTest(),
-            this.runDNSTest()
-        ]);
-        
-        this.cloudflareData = results[0].status === 'fulfilled' ? results[0].value : null;
-        this.otherData = results[1].status === 'fulfilled' ? results[1].value : null;
-        this.ipv6Data = results[2].status === 'fulfilled' ? results[2].value : null;
-        
-        if (this.cloudflareData) {
-            this.displayCloudflareData(this.cloudflareData);
-        } else {
-            this.displayError('cloudflare');
+        try {
+            const results = await Promise.allSettled([
+                API.fetchWithRetry(() => API.fetchCloudflareData()),
+                API.fetchWithRetry(() => API.fetchIpifyData()),
+                API.fetchWithRetry(() => API.fetchIPv6Data()),
+                this.runWebRTCTest(),
+                this.runDNSTest()
+            ]);
+            
+            this.cloudflareData = results[0].status === 'fulfilled' ? results[0].value : null;
+            this.otherData = results[1].status === 'fulfilled' ? results[1].value : null;
+            this.ipv6Data = results[2].status === 'fulfilled' ? results[2].value : null;
+            
+            if (this.cloudflareData) {
+                this.displayCloudflareData(this.cloudflareData);
+            } else {
+                this.displayError('cloudflare');
+            }
+            
+            if (this.otherData) {
+                this.displayOtherData(this.otherData);
+            } else {
+                this.displayError('other');
+            }
+            
+            if (this.ipv6Data) {
+                this.displayIPv6Data(this.ipv6Data);
+            } else {
+                this.displayIPv6Error();
+            }
+            
+            this.compareResults();
+            this.updateLastUpdateTime();
+            
+            const testDuration = Date.now() - this.testStartTime;
+            console.log(`All tests completed in ${testDuration}ms`);
+        } catch (error) {
+            console.error('Error during tests:', error);
+            this.updateStatus('error', 'An error occurred during testing.');
+        } finally {
+            this.isLoading = false;
         }
-        
-        if (this.otherData) {
-            this.displayOtherData(this.otherData);
-        } else {
-            this.displayError('other');
-        }
-        
-        if (this.ipv6Data) {
-            this.displayIPv6Data(this.ipv6Data);
-        } else {
-            this.displayIPv6Error();
-        }
-        
-        this.compareResults();
-        this.updateLastUpdateTime();
-        
-        const testDuration = Date.now() - this.testStartTime;
-        console.log(`All tests completed in ${testDuration}ms`);
-        
-        this.isLoading = false;
     }
     
     async runWebRTCTest() {
@@ -149,22 +215,28 @@ class IPLeakTester {
         const ipsContainer = document.getElementById('webrtc-ips');
         ipsContainer.innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div></div>';
         
-        this.webrtcIPs = await Tests.performWebRTCTest();
-        
-        if (!this.webrtcIPs || this.webrtcIPs.length === 0) {
-            ipsContainer.innerHTML = '<div class="ip-item"><div class="ip-address">✓ No additional IPs exposed by WebRTC</div><div class="ip-type">Safe</div></div>';
-            statusEl.innerHTML = '<span class="status-badge status-safe">✓ Safe</span>';
-        } else {
-            this.displayWebRTCResults();
+        try {
+            this.webrtcIPs = await Tests.performWebRTCTest();
             
-            const publicIP = this.cloudflareData ? this.cloudflareData.ip : null;
-            const analysis = Tests.analyzeWebRTCResults(this.webrtcIPs, publicIP);
-            
-            if (analysis.hasLeak) {
-                statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Leak Detected</span>';
-            } else {
+            if (!this.webrtcIPs || this.webrtcIPs.length === 0) {
+                ipsContainer.innerHTML = '<div class="ip-item"><div class="ip-address">✓ No additional IPs exposed by WebRTC</div><div class="ip-type">Safe</div></div>';
                 statusEl.innerHTML = '<span class="status-badge status-safe">✓ Safe</span>';
+            } else {
+                this.displayWebRTCResults();
+                
+                const publicIP = this.cloudflareData ? this.cloudflareData.ip : null;
+                const analysis = Tests.analyzeWebRTCResults(this.webrtcIPs, publicIP);
+                
+                if (analysis.hasLeak) {
+                    statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Leak Detected</span>';
+                } else {
+                    statusEl.innerHTML = '<span class="status-badge status-safe">✓ Safe</span>';
+                }
             }
+        } catch (error) {
+            console.error('WebRTC test error:', error);
+            statusEl.innerHTML = '<span class="status-badge status-leak">✗ Error</span>';
+            ipsContainer.innerHTML = '<div class="ip-item"><div class="ip-address">✗ Test failed</div><div class="ip-type">Error</div></div>';
         }
     }
     
@@ -222,18 +294,24 @@ class IPLeakTester {
         const serversContainer = document.getElementById('dns-servers');
         serversContainer.innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
         
-        this.dnsResults = await Tests.performDNSTest();
-        
-        this.displayDNSResults();
-        
-        const analysis = Tests.analyzeDNSResults(this.dnsResults);
-        
-        if (analysis.status === 'safe') {
-            statusEl.innerHTML = '<span class="status-badge status-safe">✓ Safe</span>';
-        } else if (analysis.status === 'warning') {
-            statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Warning</span>';
-        } else {
+        try {
+            this.dnsResults = await Tests.performDNSTest();
+            
+            this.displayDNSResults();
+            
+            const analysis = Tests.analyzeDNSResults(this.dnsResults);
+            
+            if (analysis.status === 'safe') {
+                statusEl.innerHTML = '<span class="status-badge status-safe">✓ Safe</span>';
+            } else if (analysis.status === 'warning') {
+                statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Warning</span>';
+            } else {
+                statusEl.innerHTML = '<span class="status-badge status-leak">✗ Error</span>';
+            }
+        } catch (error) {
+            console.error('DNS test error:', error);
             statusEl.innerHTML = '<span class="status-badge status-leak">✗ Error</span>';
+            serversContainer.innerHTML = '<div class="dns-item"><div class="dns-server">✗ Test failed</div></div>';
         }
     }
     
@@ -422,13 +500,18 @@ class IPLeakTester {
     
     updateLastUpdateTime() {
         const now = new Date();
-        const timeString = now.toLocaleTimeString('en-US', {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: true
-        });
-        document.getElementById('lastUpdate').textContent = timeString;
+        
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        
+        const dateString = `${year}-${month}-${day}`;
+        const timeString = `${hours}:${minutes}:${seconds}`;
+        
+        document.getElementById('lastUpdate').innerHTML = `<span class="last-update-date">${dateString}</span> <span class="last-update-separator">at</span> <span class="last-update-time">${timeString}</span>`;
     }
 }
 
