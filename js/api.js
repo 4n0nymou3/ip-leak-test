@@ -208,5 +208,101 @@ const API = {
             }
         }
         return null;
+    },
+
+    async fetchWorkerDNSLeak() {
+        if (!CONFIG.worker.enabled) {
+            return null;
+        }
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), CONFIG.timeout);
+            
+            const response = await fetch(`${CONFIG.worker.apiUrl}/api/dns-leak`, {
+                method: 'GET',
+                cache: 'no-store',
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error('Worker DNS Leak API error');
+            }
+            
+            return await response.json();
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.error('Worker DNS Leak fetch timeout');
+            } else {
+                console.error('Worker DNS Leak fetch error:', error);
+            }
+            return null;
+        }
+    },
+
+    async fetchWorkerAdvancedIP() {
+        if (!CONFIG.worker.enabled) {
+            return null;
+        }
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), CONFIG.timeout);
+            
+            const response = await fetch(`${CONFIG.worker.apiUrl}/api/advanced-ip`, {
+                method: 'GET',
+                cache: 'no-store',
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error('Worker Advanced IP API error');
+            }
+            
+            return await response.json();
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.error('Worker Advanced IP fetch timeout');
+            } else {
+                console.error('Worker Advanced IP fetch error:', error);
+            }
+            return null;
+        }
+    },
+
+    async fetchWorkerProxyDetection() {
+        if (!CONFIG.worker.enabled) {
+            return null;
+        }
+
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), CONFIG.timeout);
+            
+            const response = await fetch(`${CONFIG.worker.apiUrl}/api/proxy-detection`, {
+                method: 'GET',
+                cache: 'no-store',
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error('Worker Proxy Detection API error');
+            }
+            
+            return await response.json();
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.error('Worker Proxy Detection fetch timeout');
+            } else {
+                console.error('Worker Proxy Detection fetch error:', error);
+            }
+            return null;
+        }
     }
 };
