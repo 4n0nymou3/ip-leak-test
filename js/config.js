@@ -1,6 +1,7 @@
 const CONFIG = {
     worker: {
-        apiUrl: 'https://YOUR-WORKER-NAME.YOUR-SUBDOMAIN.workers.dev',
+        //Your Worker:
+        apiUrl: 'https://ip-leak-api.r612q.workers.dev',
         enabled: true
     },
     cloudflare: {
