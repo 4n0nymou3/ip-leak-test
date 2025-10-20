@@ -1,4 +1,8 @@
 const CONFIG = {
+    worker: {
+        apiUrl: 'https://YOUR-WORKER-NAME.YOUR-SUBDOMAIN.workers.dev',
+        enabled: true
+    },
     cloudflare: {
         apiUrl: 'https://cloudflare.com/cdn-cgi/trace',
         fallbackUrl: 'https://1.1.1.1/cdn-cgi/trace'
