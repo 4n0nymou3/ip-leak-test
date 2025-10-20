@@ -186,7 +186,7 @@ const FingerprintTests = {
         return Math.abs(hash).toString(16);
     },
     
-    async performTimezoneTest() {
+    async performTimezoneTest(ipCountry, ipCity) {
         const results = {};
         
         const date = new Date();
@@ -196,12 +196,85 @@ const FingerprintTests = {
         results.timezone = timezone;
         results.offset = `UTC${offset >= 0 ? '+' : ''}${offset}`;
         results.timestamp = date.toISOString();
+        results.browserTime = date.toLocaleString();
         
-        const browserTime = date.toLocaleString();
-        results.browserTime = browserTime;
+        const timezoneToCountry = {
+            'Europe/Amsterdam': ['NL', 'Netherlands'],
+            'Europe/London': ['GB', 'United Kingdom'],
+            'Europe/Paris': ['FR', 'France'],
+            'Europe/Berlin': ['DE', 'Germany'],
+            'Europe/Rome': ['IT', 'Italy'],
+            'Europe/Madrid': ['ES', 'Spain'],
+            'Europe/Stockholm': ['SE', 'Sweden'],
+            'Europe/Warsaw': ['PL', 'Poland'],
+            'Europe/Moscow': ['RU', 'Russia'],
+            'America/New_York': ['US', 'United States'],
+            'America/Chicago': ['US', 'United States'],
+            'America/Denver': ['US', 'United States'],
+            'America/Los_Angeles': ['US', 'United States'],
+            'America/Toronto': ['CA', 'Canada'],
+            'America/Vancouver': ['CA', 'Canada'],
+            'America/Mexico_City': ['MX', 'Mexico'],
+            'America/Sao_Paulo': ['BR', 'Brazil'],
+            'America/Argentina/Buenos_Aires': ['AR', 'Argentina'],
+            'Asia/Dubai': ['AE', 'United Arab Emirates'],
+            'Asia/Tehran': ['IR', 'Iran'],
+            'Asia/Karachi': ['PK', 'Pakistan'],
+            'Asia/Kolkata': ['IN', 'India'],
+            'Asia/Dhaka': ['BD', 'Bangladesh'],
+            'Asia/Bangkok': ['TH', 'Thailand'],
+            'Asia/Singapore': ['SG', 'Singapore'],
+            'Asia/Hong_Kong': ['HK', 'Hong Kong'],
+            'Asia/Shanghai': ['CN', 'China'],
+            'Asia/Tokyo': ['JP', 'Japan'],
+            'Asia/Seoul': ['KR', 'South Korea'],
+            'Australia/Sydney': ['AU', 'Australia'],
+            'Australia/Melbourne': ['AU', 'Australia'],
+            'Australia/Perth': ['AU', 'Australia'],
+            'Pacific/Auckland': ['NZ', 'New Zealand'],
+            'Africa/Cairo': ['EG', 'Egypt'],
+            'Africa/Johannesburg': ['ZA', 'South Africa'],
+            'Africa/Lagos': ['NG', 'Nigeria'],
+            'Africa/Nairobi': ['KE', 'Kenya']
+        };
         
-        const timezoneMatch = timezone.includes('America') || timezone.includes('Europe') || timezone.includes('Asia') || timezone.includes('Africa') || timezone.includes('Australia');
-        results.leakDetected = !timezoneMatch;
+        results.leakDetected = false;
+        results.leakReason = null;
+        
+        if (ipCountry && timezone) {
+            const expectedCountries = timezoneToCountry[timezone];
+            
+            if (expectedCountries) {
+                const countryMatch = expectedCountries.some(country => {
+                    return ipCountry.toUpperCase().includes(country.toUpperCase()) || 
+                           country.toUpperCase().includes(ipCountry.toUpperCase());
+                });
+                
+                if (!countryMatch) {
+                    results.leakDetected = true;
+                    results.leakReason = `Timezone mismatch: Your IP shows ${ipCountry} but browser timezone is ${timezone}`;
+                }
+            } else {
+                const timezoneRegion = timezone.split('/')[0];
+                const ipRegionMap = {
+                    'Europe': ['AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE', 'GB', 'NO', 'CH', 'IS', 'RS', 'UA', 'BY', 'MD', 'BA', 'AL', 'MK', 'ME', 'XK', 'RU'],
+                    'America': ['US', 'CA', 'MX', 'BR', 'AR', 'CL', 'CO', 'PE', 'VE', 'EC', 'BO', 'PY', 'UY', 'GY', 'SR', 'GF', 'CR', 'PA', 'GT', 'HN', 'NI', 'SV', 'BZ', 'JM', 'HT', 'DO', 'CU', 'TT', 'BB', 'PR'],
+                    'Asia': ['CN', 'IN', 'ID', 'PK', 'BD', 'JP', 'PH', 'VN', 'TR', 'IR', 'TH', 'MM', 'KR', 'IQ', 'AF', 'SA', 'UZ', 'MY', 'YE', 'NP', 'KP', 'LK', 'KH', 'JO', 'AZ', 'TJ', 'AE', 'IL', 'LA', 'SG', 'LB', 'KG', 'TM', 'SY', 'KW', 'GE', 'OM', 'AM', 'MN', 'QA', 'BH', 'PS', 'BT', 'MV', 'BN', 'TL'],
+                    'Africa': ['NG', 'ET', 'EG', 'CD', 'TZ', 'ZA', 'KE', 'UG', 'DZ', 'SD', 'MA', 'AO', 'GH', 'MZ', 'MG', 'CM', 'CI', 'NE', 'BF', 'ML', 'MW', 'ZM', 'SO', 'SN', 'TD', 'ZW', 'GN', 'RW', 'BJ', 'TN', 'BI', 'SS', 'TG', 'SL', 'LY', 'LR', 'CF', 'MR', 'ER', 'GM', 'BW', 'GA', 'NA', 'LS', 'GW', 'GQ', 'MU', 'SZ', 'DJ', 'RE', 'KM', 'CV', 'ST', 'SC', 'YT'],
+                    'Australia': ['AU'],
+                    'Pacific': ['NZ', 'PG', 'FJ', 'NC', 'PF', 'SB', 'VU', 'GU', 'WS', 'KI', 'FM', 'TO', 'PW', 'MH', 'NR', 'TV', 'AS', 'MP', 'CK', 'NU', 'TK', 'WF', 'PN']
+                };
+                
+                const expectedRegionCountries = ipRegionMap[timezoneRegion];
+                if (expectedRegionCountries) {
+                    const regionMatch = expectedRegionCountries.includes(ipCountry.toUpperCase());
+                    if (!regionMatch) {
+                        results.leakDetected = true;
+                        results.leakReason = `Region mismatch: Your IP shows ${ipCountry} but browser timezone region is ${timezoneRegion}`;
+                    }
+                }
+            }
+        }
         
         return results;
     },
