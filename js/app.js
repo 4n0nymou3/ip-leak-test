@@ -8,11 +8,13 @@ class IPLeakTester {
         this.fingerprintResults = null;
         this.timezoneResults = null;
         this.portResults = [];
+        this.workerDNSResults = null;
+        this.workerProxyResults = null;
         this.isLoading = false;
         this.testStartTime = null;
         this.cfMap = null;
         this.otherMap = null;
-        this.totalTests = 8;
+        this.totalTests = 10;
         this.completedTests = 0;
         
         this.init();
@@ -78,6 +80,8 @@ class IPLeakTester {
         this.fingerprintResults = null;
         this.timezoneResults = null;
         this.portResults = [];
+        this.workerDNSResults = null;
+        this.workerProxyResults = null;
         this.completedTests = 0;
         
         if (Tests.webrtcConnection) {
@@ -124,6 +128,16 @@ class IPLeakTester {
         document.getElementById('port-status').innerHTML = '<span class="status-badge status-loading">Testing...</span>';
         document.getElementById('port-results').innerHTML = '<div class="skeleton-list"><div class="skeleton"></div></div>';
         
+        if (CONFIG.worker.enabled) {
+            document.getElementById('worker-dns-status').innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+            document.getElementById('worker-dns-results').innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div></div>';
+            
+            document.getElementById('proxy-status').innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+            document.getElementById('proxy-results').innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+        } else {
+            document.getElementById('worker-dns-box').style.display = 'none';
+        }
+        
         document.getElementById('cf-map').innerHTML = '';
         document.getElementById('cf-map').style.display = 'none';
         document.getElementById('other-map').innerHTML = '';
@@ -140,6 +154,8 @@ class IPLeakTester {
             fingerprint: this.fingerprintResults,
             timezone: this.timezoneResults,
             ports: this.portResults,
+            workerDNS: this.workerDNSResults,
+            workerProxy: this.workerProxyResults,
             timestamp: new Date().toISOString()
         };
         
@@ -269,12 +285,24 @@ class IPLeakTester {
                 return result;
             });
             
+            const workerDNSPromise = this.runWorkerDNSTest().then(result => {
+                this.updateProgress(++this.completedTests);
+                return result;
+            });
+            
+            const workerProxyPromise = this.runWorkerProxyTest().then(result => {
+                this.updateProgress(++this.completedTests);
+                return result;
+            });
+            
             await Promise.all([
                 webrtcPromise,
                 dnsPromise,
                 fingerprintPromise,
                 timezonePromise,
-                portPromise
+                portPromise,
+                workerDNSPromise,
+                workerProxyPromise
             ]);
             
             this.compareResults();
@@ -411,19 +439,31 @@ class IPLeakTester {
             dnsElement.className = 'dns-item';
             
             if (result.resolved) {
+                dnsElement.classList.add('dns-success');
                 dnsElement.innerHTML = `
-                    <div class="dns-server">✓ ${result.domain}</div>
+                    <div class="dns-header">
+                        <div class="dns-server">
+                            <span class="dns-icon dns-icon-success">✓</span>
+                            ${result.domain}
+                        </div>
+                        <span class="dns-badge dns-badge-success">Accessible</span>
+                    </div>
                     <div class="dns-info">
-                        <span>Response Time: ${result.responseTime}ms</span>
-                        <span>Status: Accessible</span>
+                        <span class="dns-metric"><span class="dns-metric-label">Response Time:</span> ${result.responseTime}ms</span>
                     </div>
                 `;
             } else {
+                dnsElement.classList.add('dns-error');
                 dnsElement.innerHTML = `
-                    <div class="dns-server">✗ ${result.domain}</div>
+                    <div class="dns-header">
+                        <div class="dns-server">
+                            <span class="dns-icon dns-icon-error">✗</span>
+                            ${result.domain}
+                        </div>
+                        <span class="dns-badge dns-badge-error">Not Accessible</span>
+                    </div>
                     <div class="dns-info">
-                        <span>Status: Not Accessible</span>
-                        ${result.error ? `<span>Error: ${result.error}</span>` : ''}
+                        ${result.error ? `<span class="dns-metric"><span class="dns-metric-label">Error:</span> ${result.error}</span>` : ''}
                     </div>
                 `;
             }
@@ -594,6 +634,169 @@ class IPLeakTester {
             element.innerHTML = `
                 <div class="port-label">Port ${result.port}</div>
                 <div class="port-status">${result.status}</div>
+            `;
+            resultsContainer.appendChild(element);
+        });
+    }
+    
+    async runWorkerDNSTest() {
+        if (!CONFIG.worker.enabled) {
+            document.getElementById('worker-dns-box').style.display = 'none';
+            return;
+        }
+        
+        const statusEl = document.getElementById('worker-dns-status');
+        statusEl.innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+        
+        const resultsContainer = document.getElementById('worker-dns-results');
+        resultsContainer.innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div></div>';
+        
+        try {
+            this.workerDNSResults = await API.fetchWorkerDNSLeak();
+            
+            if (this.workerDNSResults) {
+                this.displayWorkerDNSResults();
+                
+                if (this.workerDNSResults.leakDetected) {
+                    statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Leak Detected</span>';
+                } else {
+                    statusEl.innerHTML = '<span class="status-badge status-safe">✓ Safe</span>';
+                }
+            } else {
+                statusEl.innerHTML = '<span class="status-badge status-leak">✗ Error</span>';
+                resultsContainer.innerHTML = '<div class="dns-item"><div class="dns-server">Worker API not available</div></div>';
+            }
+        } catch (error) {
+            console.error('Worker DNS test error:', error);
+            statusEl.innerHTML = '<span class="status-badge status-leak">✗ Error</span>';
+            resultsContainer.innerHTML = '<div class="dns-item"><div class="dns-server">✗ Test failed</div></div>';
+        }
+    }
+    
+    displayWorkerDNSResults() {
+        const resultsContainer = document.getElementById('worker-dns-results');
+        resultsContainer.innerHTML = '';
+        
+        if (!this.workerDNSResults) {
+            resultsContainer.innerHTML = '<div class="dns-item"><div class="dns-server">No results</div></div>';
+            return;
+        }
+        
+        const items = [
+            { label: 'Your IP', value: this.workerDNSResults.clientIP, icon: '🌐' },
+            { label: 'DNS Resolver IP', value: this.workerDNSResults.dnsResolver, icon: '🔍' },
+            { label: 'ASN Organization', value: this.workerDNSResults.asnOrg, icon: '🏢' },
+            { label: 'Cloudflare Datacenter', value: this.workerDNSResults.colo, icon: '📡' }
+        ];
+        
+        if (this.workerDNSResults.leakDetected && this.workerDNSResults.leakReason) {
+            items.push({ 
+                label: 'Leak Detected', 
+                value: this.workerDNSResults.leakReason, 
+                icon: '⚠',
+                isWarning: true 
+            });
+        }
+        
+        items.forEach(item => {
+            const element = document.createElement('div');
+            element.className = 'dns-item';
+            if (item.isWarning) {
+                element.classList.add('dns-error');
+            }
+            element.innerHTML = `
+                <div class="dns-header">
+                    <div class="dns-server">
+                        <span class="dns-icon-emoji">${item.icon}</span>
+                        ${item.label}
+                    </div>
+                    ${item.isWarning ? '<span class="dns-badge dns-badge-error">Warning</span>' : ''}
+                </div>
+                <div class="dns-info">
+                    <span class="dns-value">${item.value}</span>
+                </div>
+            `;
+            resultsContainer.appendChild(element);
+        });
+    }
+    
+    async runWorkerProxyTest() {
+        if (!CONFIG.worker.enabled) {
+            return;
+        }
+        
+        const statusEl = document.getElementById('proxy-status');
+        statusEl.innerHTML = '<span class="status-badge status-loading">Testing...</span>';
+        
+        const resultsContainer = document.getElementById('proxy-results');
+        resultsContainer.innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>';
+        
+        try {
+            this.workerProxyResults = await API.fetchWorkerProxyDetection();
+            
+            if (this.workerProxyResults) {
+                this.displayWorkerProxyResults();
+                
+                if (this.workerProxyResults.isProxyLikely) {
+                    if (this.workerProxyResults.isTor) {
+                        statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Tor Detected</span>';
+                    } else if (this.workerProxyResults.isVPN) {
+                        statusEl.innerHTML = '<span class="status-badge status-leak">⚠ VPN Detected</span>';
+                    } else if (this.workerProxyResults.isDatacenter) {
+                        statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Datacenter IP</span>';
+                    } else {
+                        statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Proxy Detected</span>';
+                    }
+                } else {
+                    statusEl.innerHTML = '<span class="status-badge status-safe">✓ Direct Connection</span>';
+                }
+            } else {
+                statusEl.innerHTML = '<span class="status-badge status-leak">✗ Error</span>';
+                resultsContainer.innerHTML = '<div class="fingerprint-item"><div class="fingerprint-label">Worker API not available</div></div>';
+            }
+        } catch (error) {
+            console.error('Worker Proxy test error:', error);
+            statusEl.innerHTML = '<span class="status-badge status-leak">✗ Error</span>';
+            resultsContainer.innerHTML = '<div class="fingerprint-item"><div class="fingerprint-label">✗ Test failed</div></div>';
+        }
+    }
+    
+    displayWorkerProxyResults() {
+        const resultsContainer = document.getElementById('proxy-results');
+        resultsContainer.innerHTML = '';
+        
+        if (!this.workerProxyResults) {
+            resultsContainer.innerHTML = '<div class="fingerprint-item"><div class="fingerprint-label">No results</div></div>';
+            return;
+        }
+        
+        const items = [
+            { label: 'IP Address', value: this.workerProxyResults.ip },
+            { label: 'Risk Level', value: this.workerProxyResults.risk },
+            { label: 'Is Tor', value: this.workerProxyResults.isTor ? 'Yes' : 'No' },
+            { label: 'Is VPN', value: this.workerProxyResults.isVPN ? 'Yes' : 'No' },
+            { label: 'Is Datacenter', value: this.workerProxyResults.isDatacenter ? 'Yes' : 'No' },
+            { label: 'ASN', value: `${this.workerProxyResults.asn} - ${this.workerProxyResults.asnOrg}` },
+            { label: 'Country', value: this.workerProxyResults.country }
+        ];
+        
+        if (this.workerProxyResults.proxyIndicators && this.workerProxyResults.proxyIndicators.length > 0) {
+            items.push({ 
+                label: 'Detection Indicators', 
+                value: this.workerProxyResults.proxyIndicators.join(', '),
+                isWarning: true
+            });
+        }
+        
+        items.forEach(item => {
+            const element = document.createElement('div');
+            element.className = 'fingerprint-item';
+            if (item.isWarning) {
+                element.style.borderLeft = '3px solid #da3633';
+            }
+            element.innerHTML = `
+                <div class="fingerprint-label">${item.label}</div>
+                <div class="fingerprint-value">${item.value}</div>
             `;
             resultsContainer.appendChild(element);
         });
