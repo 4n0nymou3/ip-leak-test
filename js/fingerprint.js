@@ -10,6 +10,9 @@ const FingerprintTests = {
         results.languages = this.getLanguagesInfo();
         results.platform = this.getPlatformInfo();
         results.hardware = this.getHardwareInfo();
+        results.connection = await this.getConnectionInfo();
+        results.battery = await this.getBatteryInfo();
+        results.doNotTrack = this.getDoNotTrackInfo();
         
         return results;
     },
@@ -27,9 +30,9 @@ const FingerprintTests = {
             ctx.fillStyle = '#f60';
             ctx.fillRect(125, 1, 62, 20);
             ctx.fillStyle = '#069';
-            ctx.fillText('Canvas Fingerprint Test ðŸ”’', 2, 15);
+            ctx.fillText('Canvas Fingerprint Test ', 2, 15);
             ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
-            ctx.fillText('Canvas Fingerprint Test ðŸ”’', 4, 17);
+            ctx.fillText('Canvas Fingerprint Test ', 4, 17);
             
             const dataURL = canvas.toDataURL();
             const hash = await this.simpleHash(dataURL);
@@ -173,6 +176,86 @@ const FingerprintTests = {
             cores: navigator.hardwareConcurrency || 'Unknown',
             memory: navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'Unknown',
             touchSupport: 'ontouchstart' in window || navigator.maxTouchPoints > 0
+        };
+    },
+    
+    async getConnectionInfo() {
+        try {
+            const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            
+            if (connection) {
+                return {
+                    detected: true,
+                    type: connection.effectiveType || connection.type || 'Unknown',
+                    downlink: connection.downlink ? `${connection.downlink} Mbps` : 'Unknown',
+                    rtt: connection.rtt ? `${connection.rtt} ms` : 'Unknown',
+                    saveData: connection.saveData ? 'Enabled' : 'Disabled'
+                };
+            }
+            
+            return {
+                detected: false,
+                type: 'Not Available',
+                downlink: 'Not Available',
+                rtt: 'Not Available',
+                saveData: 'Not Available'
+            };
+        } catch (error) {
+            return {
+                detected: false,
+                type: 'Error',
+                downlink: 'Error',
+                rtt: 'Error',
+                saveData: 'Error'
+            };
+        }
+    },
+    
+    async getBatteryInfo() {
+        try {
+            if ('getBattery' in navigator) {
+                const battery = await navigator.getBattery();
+                return {
+                    detected: true,
+                    level: `${Math.round(battery.level * 100)}%`,
+                    charging: battery.charging ? 'Yes' : 'No',
+                    chargingTime: battery.chargingTime === Infinity ? 'N/A' : `${Math.round(battery.chargingTime / 60)} min`,
+                    dischargingTime: battery.dischargingTime === Infinity ? 'N/A' : `${Math.round(battery.dischargingTime / 60)} min`
+                };
+            }
+            
+            return {
+                detected: false,
+                level: 'Not Available',
+                charging: 'Not Available',
+                chargingTime: 'Not Available',
+                dischargingTime: 'Not Available'
+            };
+        } catch (error) {
+            return {
+                detected: false,
+                level: 'Blocked/Error',
+                charging: 'Blocked/Error',
+                chargingTime: 'Blocked/Error',
+                dischargingTime: 'Blocked/Error'
+            };
+        }
+    },
+    
+    getDoNotTrackInfo() {
+        const dnt = navigator.doNotTrack || window.doNotTrack || navigator.msDoNotTrack;
+        
+        let status = 'Not Set';
+        if (dnt === '1' || dnt === 'yes') {
+            status = 'Enabled';
+        } else if (dnt === '0' || dnt === 'no') {
+            status = 'Disabled';
+        }
+        
+        return {
+            detected: true,
+            status: status,
+            value: dnt || 'null'
         };
     },
     
