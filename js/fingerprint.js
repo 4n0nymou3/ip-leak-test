@@ -30,9 +30,9 @@ const FingerprintTests = {
             ctx.fillStyle = '#f60';
             ctx.fillRect(125, 1, 62, 20);
             ctx.fillStyle = '#069';
-            ctx.fillText('Canvas Fingerprint Test ', 2, 15);
+            ctx.fillText('Canvas Fingerprint Test 🔒', 2, 15);
             ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
-            ctx.fillText('Canvas Fingerprint Test ', 4, 17);
+            ctx.fillText('Canvas Fingerprint Test 🔒', 4, 17);
             
             const dataURL = canvas.toDataURL();
             const hash = await this.simpleHash(dataURL);
