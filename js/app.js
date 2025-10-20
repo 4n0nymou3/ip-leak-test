@@ -210,19 +210,39 @@ class IPLeakTester {
         
         try {
             const cloudflarePromise = API.fetchWithRetry(() => API.fetchCloudflareData()).then(result => {
+                this.cloudflareData = result;
                 this.updateProgress(++this.completedTests);
+                if (result) {
+                    this.displayCloudflareData(result);
+                } else {
+                    this.displayError('cloudflare');
+                }
                 return result;
             });
             
             const ipifyPromise = API.fetchWithRetry(() => API.fetchIpifyData()).then(result => {
+                this.otherData = result;
                 this.updateProgress(++this.completedTests);
+                if (result) {
+                    this.displayOtherData(result);
+                } else {
+                    this.displayError('other');
+                }
                 return result;
             });
             
             const ipv6Promise = API.fetchWithRetry(() => API.fetchIPv6Data()).then(result => {
+                this.ipv6Data = result;
                 this.updateProgress(++this.completedTests);
+                if (result) {
+                    this.displayIPv6Data(result);
+                } else {
+                    this.displayIPv6Error();
+                }
                 return result;
             });
+            
+            await Promise.all([cloudflarePromise, ipifyPromise, ipv6Promise]);
             
             const webrtcPromise = this.runWebRTCTest().then(result => {
                 this.updateProgress(++this.completedTests);
@@ -249,38 +269,13 @@ class IPLeakTester {
                 return result;
             });
             
-            const results = await Promise.allSettled([
-                cloudflarePromise,
-                ipifyPromise,
-                ipv6Promise,
+            await Promise.all([
                 webrtcPromise,
                 dnsPromise,
                 fingerprintPromise,
                 timezonePromise,
                 portPromise
             ]);
-            
-            this.cloudflareData = results[0].status === 'fulfilled' ? results[0].value : null;
-            this.otherData = results[1].status === 'fulfilled' ? results[1].value : null;
-            this.ipv6Data = results[2].status === 'fulfilled' ? results[2].value : null;
-            
-            if (this.cloudflareData) {
-                this.displayCloudflareData(this.cloudflareData);
-            } else {
-                this.displayError('cloudflare');
-            }
-            
-            if (this.otherData) {
-                this.displayOtherData(this.otherData);
-            } else {
-                this.displayError('other');
-            }
-            
-            if (this.ipv6Data) {
-                this.displayIPv6Data(this.ipv6Data);
-            } else {
-                this.displayIPv6Error();
-            }
             
             this.compareResults();
             this.updateLastUpdateTime();
@@ -496,12 +491,20 @@ class IPLeakTester {
         resultsContainer.innerHTML = '<div class="skeleton-list"><div class="skeleton"></div><div class="skeleton"></div></div>';
         
         try {
-            this.timezoneResults = await FingerprintTests.performTimezoneTest();
+            const ipCountry = this.cloudflareData ? this.cloudflareData.country : (this.otherData ? this.otherData.country : null);
+            const ipCity = this.cloudflareData ? this.cloudflareData.city : (this.otherData ? this.otherData.city : null);
+            
+            console.log('Timezone Test - IP Country:', ipCountry);
+            console.log('Timezone Test - IP City:', ipCity);
+            
+            this.timezoneResults = await FingerprintTests.performTimezoneTest(ipCountry, ipCity);
+            
+            console.log('Timezone Test Results:', this.timezoneResults);
             
             this.displayTimezoneResults();
             
             if (this.timezoneResults.leakDetected) {
-                statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Leak Possible</span>';
+                statusEl.innerHTML = '<span class="status-badge status-leak">⚠ Leak Detected</span>';
             } else {
                 statusEl.innerHTML = '<span class="status-badge status-safe">✓ Normal</span>';
             }
@@ -527,9 +530,16 @@ class IPLeakTester {
             { label: 'Browser Time', value: this.timezoneResults.browserTime }
         ];
         
+        if (this.timezoneResults.leakDetected && this.timezoneResults.leakReason) {
+            items.push({ label: '⚠ Leak Detected', value: this.timezoneResults.leakReason });
+        }
+        
         items.forEach(item => {
             const element = document.createElement('div');
             element.className = 'timezone-item';
+            if (item.label.includes('⚠')) {
+                element.style.borderLeft = '3px solid #da3633';
+            }
             element.innerHTML = `
                 <div class="timezone-label">${item.label}</div>
                 <div class="timezone-value">${item.value}</div>
