@@ -469,7 +469,13 @@ class IPLeakTester {
             { label: 'Platform', value: this.fingerprintResults.platform.platform },
             { label: 'Languages', value: this.fingerprintResults.languages.all },
             { label: 'Hardware Cores', value: this.fingerprintResults.hardware.cores },
-            { label: 'Touch Support', value: this.fingerprintResults.hardware.touchSupport ? 'Yes' : 'No' }
+            { label: 'Device Memory', value: this.fingerprintResults.hardware.memory },
+            { label: 'Touch Support', value: this.fingerprintResults.hardware.touchSupport ? 'Yes' : 'No' },
+            { label: 'Connection Type', value: this.fingerprintResults.connection.detected ? this.fingerprintResults.connection.type : 'Not Available' },
+            { label: 'Connection Speed', value: this.fingerprintResults.connection.detected ? `${this.fingerprintResults.connection.downlink} (RTT: ${this.fingerprintResults.connection.rtt})` : 'Not Available' },
+            { label: 'Battery Level', value: this.fingerprintResults.battery.level },
+            { label: 'Battery Charging', value: this.fingerprintResults.battery.charging },
+            { label: 'Do Not Track', value: this.fingerprintResults.doNotTrack.status }
         ];
         
         items.forEach(item => {
