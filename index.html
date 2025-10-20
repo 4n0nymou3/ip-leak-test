@@ -44,6 +44,7 @@
             <button class="tab-btn" data-tab="other">Other Targets</button>
             <button class="tab-btn" data-tab="webrtc">WebRTC Test</button>
             <button class="tab-btn" data-tab="dns">DNS Test</button>
+            <button class="tab-btn" data-tab="proxy">Proxy/VPN Detection</button>
             <button class="tab-btn" data-tab="fingerprint">Fingerprint Test</button>
             <button class="tab-btn" data-tab="advanced">Advanced Info</button>
         </div>
@@ -200,6 +201,45 @@
                     DNS leak test to ensure your real DNS servers are not exposed. Note: This is a basic accessibility test. For comprehensive DNS leak detection, consider using dedicated tools with backend support.
                 </div>
                 <div class="dns-servers" id="dns-servers">
+                    <div class="skeleton-list">
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="test-result-box" style="margin-top: 20px;" id="worker-dns-box">
+                <div class="test-header">
+                    <h3>🔬 Advanced DNS Leak Detection</h3>
+                    <div class="test-status" id="worker-dns-status">
+                        <span class="status-badge status-loading">Testing...</span>
+                    </div>
+                </div>
+                <div class="test-description">
+                    Server-side DNS leak detection powered by Cloudflare Worker.
+                </div>
+                <div class="dns-servers" id="worker-dns-results">
+                    <div class="skeleton-list">
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="proxy">
+            <div class="test-result-box">
+                <div class="test-header">
+                    <h3>🕵️ Proxy/VPN/Tor Detection</h3>
+                    <div class="test-status" id="proxy-status">
+                        <span class="status-badge status-loading">Testing...</span>
+                    </div>
+                </div>
+                <div class="test-description">
+                    Advanced detection to identify if you are using a Proxy, VPN, Tor, or Datacenter IP.
+                </div>
+                <div class="fingerprint-results" id="proxy-results">
                     <div class="skeleton-list">
                         <div class="skeleton"></div>
                         <div class="skeleton"></div>
