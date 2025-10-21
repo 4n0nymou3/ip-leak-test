@@ -42,7 +42,7 @@ async function handleRequest(request) {
         });
     }
 
-    return new Response('Not Found', { 
+    return new Response('Not Found', {
         status: 404,
         headers: corsHeaders
     });
@@ -51,31 +51,34 @@ async function handleRequest(request) {
 async function handleDNSLeak(request, corsHeaders) {
     try {
         const clientIP = request.headers.get('CF-Connecting-IP') || 'Unknown';
-        const dnsResolver = request.headers.get('CF-Resolver-IP') || 'Unknown';
-        
+        const asOrganization = request.cf?.asOrganization || 'Unknown';
+        const clientASN = request.cf?.asn || 'Unknown';
+
         const dnsData = {
             clientIP: clientIP,
-            dnsResolver: dnsResolver,
+            asOrganization: asOrganization,
+            asn: clientASN,
             timestamp: new Date().toISOString(),
             cloudflareRay: request.headers.get('CF-Ray') || 'Unknown',
             country: request.cf?.country || 'Unknown',
             city: request.cf?.city || 'Unknown',
-            asn: request.cf?.asn || 'Unknown',
-            asnOrg: request.cf?.asOrganization || 'Unknown',
             colo: request.cf?.colo || 'Unknown',
             leakDetected: false,
             leakReason: null
         };
-
-        if (dnsResolver !== 'Unknown' && clientIP !== 'Unknown') {
-            const resolverParts = dnsResolver.split('.');
-            const clientParts = clientIP.split('.');
-            
-            if (resolverParts[0] !== clientParts[0] || resolverParts[1] !== clientParts[1]) {
-                dnsData.leakDetected = true;
-                dnsData.leakReason = 'DNS Resolver IP differs significantly from Client IP';
-            }
+        
+        const isp = asOrganization.toLowerCase();
+        const commonDnsProviders = ['google', 'cloudflare', 'quad9', 'opendns'];
+        const isCommonPublicDNS = commonDnsProviders.some(provider => isp.includes(provider));
+        
+        if (clientASN && clientASN !== request.cf?.asn) {
+             dnsData.leakDetected = true;
+             dnsData.leakReason = 'Client ASN differs from expected ASN, potential DNS leak.';
+        } else if (isCommonPublicDNS) {
+            dnsData.leakDetected = false;
+            dnsData.leakReason = 'Using a known public DNS provider.';
         }
+
 
         return new Response(JSON.stringify(dnsData), {
             headers: {
@@ -173,7 +176,7 @@ async function handleProxyDetection(request, corsHeaders) {
     try {
         const clientIP = request.headers.get('CF-Connecting-IP') || 'Unknown';
         const asOrg = request.cf?.asOrganization || '';
-        const userAgent = request.headers.get('User-Agent') || '';
+        const country = request.cf?.country || 'Unknown';
         
         const proxyIndicators = [];
         let isProxyLikely = false;
@@ -181,33 +184,41 @@ async function handleProxyDetection(request, corsHeaders) {
         let isVPN = false;
         let isDatacenter = false;
 
-        const vpnKeywords = ['vpn', 'virtual private', 'proxy', 'anonymizer', 'nordvpn', 'expressvpn', 'mullvad', 'protonvpn', 'surfshark', 'cyberghost', 'private internet access', 'pia'];
-        const datacenterKeywords = ['amazon', 'aws', 'google cloud', 'microsoft azure', 'digitalocean', 'ovh', 'hetzner', 'linode', 'vultr', 'cloudflare'];
-        const torKeywords = ['tor', 'onion'];
+        const vpnKeywords = ['vpn', 'virtual private', 'proxy', 'anonymizer', 'nordvpn', 'expressvpn', 'mullvad', 'protonvpn', 'surfshark', 'cyberghost', 'private internet access', 'pia', 'windscribe', 'vyprvpn', 'tunnelbear', 'hidemyass', 'ipvanish', 'zenmate', 'strongvpn'];
+        const datacenterKeywords = ['amazon', 'aws', 'google cloud', 'microsoft azure', 'digitalocean', 'ovh', 'hetzner', 'linode', 'vultr', 'cloudflare', 'm247', 'leaseweb', 'choopa', 'datacamp', 'frantech', 'online.net', 'scaleway', 'contabo', 'interserver', 'fastly', 'stackpath'];
+        const residentialKeywords = ['isp', 'broadband', 'telecom', 'mobile', 'cable', 'communications', 'internet services', 'telecommunication'];
 
-        const asnLower = asOrg.toLowerCase();
-        
-        for (const keyword of torKeywords) {
-            if (asnLower.includes(keyword)) {
-                isTor = true;
-                proxyIndicators.push(`TOR exit node detected: ${asOrg}`);
-                break;
+        if (country === 'T1') {
+            isTor = true;
+            proxyIndicators.push('Tor exit node detected (via country code T1)');
+        } else {
+            const asnLower = asOrg.toLowerCase();
+            let isResidential = false;
+            for (const keyword of residentialKeywords) {
+                if (asnLower.includes(keyword)) {
+                    isResidential = true;
+                    break;
+                }
             }
-        }
 
-        for (const keyword of vpnKeywords) {
-            if (asnLower.includes(keyword)) {
-                isVPN = true;
-                proxyIndicators.push(`VPN service detected: ${asOrg}`);
-                break;
-            }
-        }
-
-        for (const keyword of datacenterKeywords) {
-            if (asnLower.includes(keyword)) {
-                isDatacenter = true;
-                proxyIndicators.push(`Datacenter IP detected: ${asOrg}`);
-                break;
+            if (!isResidential) {
+                for (const keyword of vpnKeywords) {
+                    if (asnLower.includes(keyword)) {
+                        isVPN = true;
+                        proxyIndicators.push(`VPN service detected: ${asOrg}`);
+                        break;
+                    }
+                }
+                if (!isVPN) {
+                    for (const keyword of datacenterKeywords) {
+                        if (asnLower.includes(keyword)) {
+                            isDatacenter = true;
+                            isVPN = true;
+                            proxyIndicators.push(`Datacenter/VPN IP detected: ${asOrg}`);
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -244,7 +255,7 @@ async function handleProxyDetection(request, corsHeaders) {
             asn: request.cf?.asn || 'Unknown',
             asnOrg: asOrg,
             country: request.cf?.country || 'Unknown',
-            risk: isProxyLikely ? (isTor ? 'High' : (isVPN || isDatacenter ? 'Medium' : 'Low')) : 'Low',
+            risk: isProxyLikely ? (isTor ? 'High' : (isVPN || isDatacenter ? 'Medium' : 'Low')) : 'Very Low',
             timestamp: new Date().toISOString()
         };
 
@@ -269,6 +280,7 @@ async function handleProxyDetection(request, corsHeaders) {
 }
 
 function getCountryName(code) {
+    if (code === 'T1') return 'Tor Network';
     const countries = {
         'US': 'United States', 'GB': 'United Kingdom', 'CA': 'Canada', 'AU': 'Australia',
         'DE': 'Germany', 'FR': 'France', 'IT': 'Italy', 'ES': 'Spain', 'NL': 'Netherlands',
