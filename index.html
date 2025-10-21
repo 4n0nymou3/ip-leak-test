@@ -28,6 +28,19 @@
             </button>
         </div>
 
+        <div id="security-score-container" class="score-container">
+            <div class="score-gauge">
+                <svg class="score-gauge-svg" viewBox="0 0 120 120">
+                    <circle class="score-gauge-base" cx="60" cy="60" r="54"></circle>
+                    <circle id="scoreGaugeProgress" class="score-gauge-progress" cx="60" cy="60" r="54"></circle>
+                </svg>
+                <div class="score-text-content">
+                    <span id="scoreValue" class="score-value">--</span>
+                    <span id="scoreDescription" class="score-description">Calculating...</span>
+                </div>
+            </div>
+        </div>
+
         <div class="status-section">
             <div class="status-card" id="statusCard">
                 <div class="status-icon">⏳</div>
