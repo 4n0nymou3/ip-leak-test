@@ -121,6 +121,71 @@ header h1 {
     }
 }
 
+.score-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 30px;
+}
+
+.score-gauge {
+    position: relative;
+    width: 150px;
+    height: 150px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.score-gauge-svg {
+    transform: rotate(-90deg);
+    width: 100%;
+    height: 100%;
+}
+
+.score-gauge-base {
+    fill: none;
+    stroke: #30363d;
+    stroke-width: 10;
+}
+
+.score-gauge-progress {
+    fill: none;
+    stroke: #8b949e;
+    stroke-width: 10;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.8s ease, stroke 0.8s ease;
+}
+
+.score-gauge-progress.score-green { stroke: #3fb950; }
+.score-gauge-progress.score-yellow { stroke: #d29922; }
+.score-gauge-progress.score-orange { stroke: #f08833; }
+.score-gauge-progress.score-red { stroke: #f85149; }
+
+.score-text-content {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.score-value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #c9d1d9;
+    line-height: 1;
+}
+
+.score-description {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #8b949e;
+    margin-top: 5px;
+    letter-spacing: 0.5px;
+}
+
 .status-section {
     margin-bottom: 30px;
 }
