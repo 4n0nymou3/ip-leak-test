@@ -142,6 +142,18 @@ class IPLeakTester {
         document.getElementById('cf-map').style.display = 'none';
         document.getElementById('other-map').innerHTML = '';
         document.getElementById('other-map').style.display = 'none';
+
+        const scoreValue = document.getElementById('scoreValue');
+        const scoreDescription = document.getElementById('scoreDescription');
+        const scoreProgress = document.getElementById('scoreGaugeProgress');
+        
+        scoreValue.textContent = '--';
+        scoreDescription.textContent = 'Calculating...';
+        scoreProgress.classList.remove('score-green', 'score-yellow', 'score-orange', 'score-red');
+        const radius = scoreProgress.r.baseVal.value;
+        const circumference = 2 * Math.PI * radius;
+        scoreProgress.style.strokeDasharray = circumference;
+        scoreProgress.style.strokeDashoffset = circumference;
     }
     
     handleExport() {
@@ -306,6 +318,7 @@ class IPLeakTester {
             ]);
             
             this.compareResults();
+            this.calculateAndDisplaySecurityScore();
             this.updateLastUpdateTime();
             
             const testDuration = Date.now() - this.testStartTime;
@@ -684,8 +697,8 @@ class IPLeakTester {
         
         const items = [
             { label: 'Your IP', value: this.workerDNSResults.clientIP, icon: '🌐' },
-            { label: 'DNS Resolver IP', value: this.workerDNSResults.dnsResolver, icon: '🔍' },
-            { label: 'ASN Organization', value: this.workerDNSResults.asnOrg, icon: '🏢' },
+            { label: 'ASN', value: `AS${this.workerDNSResults.asn}`, icon: '🔍' },
+            { label: 'Network Provider', value: this.workerDNSResults.asOrganization, icon: '🏢' },
             { label: 'Cloudflare Datacenter', value: this.workerDNSResults.colo, icon: '📡' }
         ];
         
@@ -934,6 +947,93 @@ class IPLeakTester {
         }
     }
     
+    calculateAndDisplaySecurityScore() {
+        let score = 100;
+        const issues = [];
+
+        if (this.workerProxyResults) {
+            if (!this.workerProxyResults.isProxyLikely) {
+                score -= 60;
+                issues.push("Direct connection (no VPN/Proxy).");
+            } else if (this.workerProxyResults.isDatacenter && !this.workerProxyResults.isVPN) {
+                score -= 10;
+                issues.push("Using a generic datacenter IP.");
+            }
+        } else {
+            score -= 5;
+            issues.push("Could not verify proxy status.");
+        }
+
+        const publicIP = this.cloudflareData ? this.cloudflareData.ip : null;
+        if (publicIP && this.webrtcIPs) {
+            const webrtcAnalysis = Tests.analyzeWebRTCResults(this.webrtcIPs, publicIP);
+            if (webrtcAnalysis.hasLeak) {
+                score -= 30;
+                issues.push("WebRTC leak detected.");
+            }
+        }
+
+        if (this.workerDNSResults && this.workerDNSResults.leakDetected) {
+            score -= 20;
+            issues.push("Potential DNS leak.");
+        }
+
+        if (this.timezoneResults && this.timezoneResults.leakDetected) {
+            score -= 15;
+            issues.push("Timezone mismatch leak.");
+        }
+
+        if (this.cloudflareData && this.otherData && this.cloudflareData.ip !== this.otherData.ip) {
+            score -= 10;
+            issues.push("IP address mismatch.");
+        }
+        
+        if (this.ipv6Data && this.cloudflareData && this.ipv6Data.ip !== this.cloudflareData.ip) {
+            score -= 10;
+            issues.push("IPv6 detected, may bypass IPv4 VPN.");
+        }
+
+        if (this.portResults) {
+            const openPorts = this.portResults.filter(p => p.status === 'Potentially Open').length;
+            if (openPorts > 0) {
+                score -= (openPorts * 5);
+                issues.push(`${openPorts} potentially open port(s).`);
+            }
+        }
+
+        score = Math.max(0, score);
+        console.log("Final Score:", score, "Issues:", issues);
+
+        const scoreValueEl = document.getElementById('scoreValue');
+        const scoreDescriptionEl = document.getElementById('scoreDescription');
+        const scoreProgressEl = document.getElementById('scoreGaugeProgress');
+        
+        scoreValueEl.textContent = `${Math.round(score)}`;
+        
+        scoreProgressEl.classList.remove('score-green', 'score-yellow', 'score-orange', 'score-red');
+        
+        if (score >= 85) {
+            scoreDescriptionEl.textContent = 'Excellent Security';
+            scoreProgressEl.classList.add('score-green');
+        } else if (score >= 60) {
+            scoreDescriptionEl.textContent = 'Good Security';
+            scoreProgressEl.classList.add('score-yellow');
+        } else if (score >= 40) {
+            scoreDescriptionEl.textContent = 'Average Security';
+            scoreProgressEl.classList.add('score-orange');
+        } else {
+            scoreDescriptionEl.textContent = 'Poor Security';
+            scoreProgressEl.classList.add('score-red');
+        }
+        
+        const radius = scoreProgressEl.r.baseVal.value;
+        const circumference = 2 * Math.PI * radius;
+        const offset = circumference - (score / 100) * circumference;
+        
+        scoreProgressEl.style.strokeDasharray = circumference;
+        scoreProgressEl.style.strokeDashoffset = offset;
+    }
+
     updateStatus(status, message) {
         const statusCard = document.getElementById('statusCard');
         const iconMap = {
