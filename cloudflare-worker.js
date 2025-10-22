@@ -79,7 +79,6 @@ async function handleDNSLeak(request, corsHeaders) {
             dnsData.leakReason = 'Using a known public DNS provider.';
         }
 
-
         return new Response(JSON.stringify(dnsData), {
             headers: {
                 ...corsHeaders,
@@ -177,6 +176,7 @@ async function handleProxyDetection(request, corsHeaders) {
         const clientIP = request.headers.get('CF-Connecting-IP') || 'Unknown';
         const asOrg = request.cf?.asOrganization || '';
         const country = request.cf?.country || 'Unknown';
+        const asn = request.cf?.asn || 0;
         
         const proxyIndicators = [];
         let isProxyLikely = false;
@@ -184,39 +184,52 @@ async function handleProxyDetection(request, corsHeaders) {
         let isVPN = false;
         let isDatacenter = false;
 
-        const vpnKeywords = ['vpn', 'virtual private', 'proxy', 'anonymizer', 'nordvpn', 'expressvpn', 'mullvad', 'protonvpn', 'surfshark', 'cyberghost', 'private internet access', 'pia', 'windscribe', 'vyprvpn', 'tunnelbear', 'hidemyass', 'ipvanish', 'zenmate', 'strongvpn'];
-        const datacenterKeywords = ['amazon', 'aws', 'google cloud', 'microsoft azure', 'digitalocean', 'ovh', 'hetzner', 'linode', 'vultr', 'cloudflare', 'm247', 'leaseweb', 'choopa', 'datacamp', 'frantech', 'online.net', 'scaleway', 'contabo', 'interserver', 'fastly', 'stackpath'];
-        const residentialKeywords = ['isp', 'broadband', 'telecom', 'mobile', 'cable', 'communications', 'internet services', 'telecommunication'];
-
         if (country === 'T1') {
             isTor = true;
-            proxyIndicators.push('Tor exit node detected (via country code T1)');
-        } else {
-            const asnLower = asOrg.toLowerCase();
-            let isResidential = false;
-            for (const keyword of residentialKeywords) {
+            isProxyLikely = true;
+            proxyIndicators.push('Tor exit node detected (country code T1)');
+        }
+
+        const torASNs = [44270, 396507, 26895, 62041, 64425, 205100];
+        if (torASNs.includes(asn)) {
+            isTor = true;
+            isProxyLikely = true;
+            proxyIndicators.push(`Tor ASN detected: AS${asn}`);
+        }
+
+        const vpnKeywords = ['vpn', 'virtual private', 'proxy', 'anonymizer', 'nord', 'express', 'mullvad', 'proton', 'surfshark', 'cyberghost', 'private internet access', 'pia', 'windscribe', 'vypr', 'tunnelbear', 'hidemyass', 'ipvanish', 'zenmate', 'strongvpn', 'hotspot shield', 'hide.me', 'perfect privacy', 'airvpn', 'privatevpn', 'torguard', 'ivpn', 'vpnunlimited', 'trust.zone', 'purevpn', 'astrill', 'boleh'];
+        
+        const datacenterKeywords = ['amazon', 'aws', 'google cloud', 'gce', 'microsoft azure', 'digitalocean', 'ovh', 'hetzner', 'linode', 'vultr', 'cloudflare', 'm247', 'leaseweb', 'choopa', 'datacamp', 'frantech', 'online.net', 'scaleway', 'contabo', 'interserver', 'fastly', 'stackpath', 'packet', 'serverius', 'multacom', 'buyvm', 'virmach', 'hostinger', 'nforce', 'privatelayer', 'quadranet', 'coreix', 'fdcservers', 'psychz', 'zappie host'];
+        
+        const residentialKeywords = ['telecom', 'telekom', 'telefonica', 'comcast', 'verizon', 'att', 'at&t', 'rogers', 'bell canada', 'shaw', 'telus', 'vodafone', 'orange', 'tim', 'bt group', 'sky broadband', 'charter', 'cox', 'centurylink', 'frontier', 'spectrum', 'xfinity', 'virgin media'];
+
+        const asnLower = asOrg.toLowerCase();
+        let isResidential = false;
+        
+        for (const keyword of residentialKeywords) {
+            if (asnLower.includes(keyword)) {
+                isResidential = true;
+                break;
+            }
+        }
+
+        if (!isTor && !isResidential) {
+            for (const keyword of vpnKeywords) {
                 if (asnLower.includes(keyword)) {
-                    isResidential = true;
+                    isVPN = true;
+                    isProxyLikely = true;
+                    proxyIndicators.push(`VPN service detected: ${asOrg}`);
                     break;
                 }
             }
-
-            if (!isResidential) {
-                for (const keyword of vpnKeywords) {
+            
+            if (!isVPN) {
+                for (const keyword of datacenterKeywords) {
                     if (asnLower.includes(keyword)) {
-                        isVPN = true;
-                        proxyIndicators.push(`VPN service detected: ${asOrg}`);
+                        isDatacenter = true;
+                        isProxyLikely = true;
+                        proxyIndicators.push(`Datacenter IP detected: ${asOrg}`);
                         break;
-                    }
-                }
-                if (!isVPN) {
-                    for (const keyword of datacenterKeywords) {
-                        if (asnLower.includes(keyword)) {
-                            isDatacenter = true;
-                            isVPN = true;
-                            proxyIndicators.push(`Datacenter/VPN IP detected: ${asOrg}`);
-                            break;
-                        }
                     }
                 }
             }
@@ -226,12 +239,12 @@ async function handleProxyDetection(request, corsHeaders) {
         const realIP = request.headers.get('X-Real-IP');
         const viaHeader = request.headers.get('Via');
         
-        if (forwardedFor) {
+        if (forwardedFor && forwardedFor !== clientIP) {
             proxyIndicators.push('X-Forwarded-For header present');
             isProxyLikely = true;
         }
         
-        if (realIP) {
+        if (realIP && realIP !== clientIP) {
             proxyIndicators.push('X-Real-IP header present');
             isProxyLikely = true;
         }
@@ -241,8 +254,15 @@ async function handleProxyDetection(request, corsHeaders) {
             isProxyLikely = true;
         }
 
-        if (isTor || isVPN || isDatacenter) {
-            isProxyLikely = true;
+        let riskLevel = 'Very Low';
+        if (isTor) {
+            riskLevel = 'Critical';
+        } else if (isVPN) {
+            riskLevel = 'High';
+        } else if (isDatacenter) {
+            riskLevel = 'Medium';
+        } else if (isProxyLikely) {
+            riskLevel = 'Low';
         }
 
         const detectionData = {
@@ -252,10 +272,10 @@ async function handleProxyDetection(request, corsHeaders) {
             isVPN: isVPN,
             isDatacenter: isDatacenter,
             proxyIndicators: proxyIndicators,
-            asn: request.cf?.asn || 'Unknown',
+            asn: asn,
             asnOrg: asOrg,
-            country: request.cf?.country || 'Unknown',
-            risk: isProxyLikely ? (isTor ? 'High' : (isVPN || isDatacenter ? 'Medium' : 'Low')) : 'Very Low',
+            country: country,
+            risk: riskLevel,
             timestamp: new Date().toISOString()
         };
 
