@@ -955,7 +955,7 @@ class IPLeakTester {
             if (!this.workerProxyResults.isProxyLikely) {
                 score -= 60;
                 issues.push("Direct connection (no VPN/Proxy).");
-            } else if (this.workerProxyResults.isDatacenter && !this.workerProxyResults.isVPN) {
+            } else if (this.workerProxyResults.isDatacenter && !this.workerProxyResults.isVPN && !this.workerProxyResults.isTor) {
                 score -= 10;
                 issues.push("Using a generic datacenter IP.");
             }
@@ -965,7 +965,7 @@ class IPLeakTester {
         }
 
         const publicIP = this.cloudflareData ? this.cloudflareData.ip : null;
-        if (publicIP && this.webrtcIPs) {
+        if (publicIP && this.webrtcIPs && this.webrtcIPs.length > 0) {
             const webrtcAnalysis = Tests.analyzeWebRTCResults(this.webrtcIPs, publicIP);
             if (webrtcAnalysis.hasLeak) {
                 score -= 30;
@@ -975,34 +975,36 @@ class IPLeakTester {
 
         if (this.workerDNSResults && this.workerDNSResults.leakDetected) {
             score -= 20;
-            issues.push("Potential DNS leak.");
+            issues.push("DNS leak detected.");
         }
 
         if (this.timezoneResults && this.timezoneResults.leakDetected) {
             score -= 15;
-            issues.push("Timezone mismatch leak.");
+            issues.push("Timezone mismatch.");
         }
 
         if (this.cloudflareData && this.otherData && this.cloudflareData.ip !== this.otherData.ip) {
             score -= 10;
-            issues.push("IP address mismatch.");
+            issues.push("IP mismatch between sources.");
         }
         
         if (this.ipv6Data && this.cloudflareData && this.ipv6Data.ip !== this.cloudflareData.ip) {
             score -= 10;
-            issues.push("IPv6 detected, may bypass IPv4 VPN.");
+            issues.push("IPv6 may bypass VPN.");
         }
 
         if (this.portResults) {
             const openPorts = this.portResults.filter(p => p.status === 'Potentially Open').length;
             if (openPorts > 0) {
                 score -= (openPorts * 5);
-                issues.push(`${openPorts} potentially open port(s).`);
+                issues.push(`${openPorts} open port(s).`);
             }
         }
 
-        score = Math.max(0, score);
-        console.log("Final Score:", score, "Issues:", issues);
+        score = Math.max(0, Math.min(100, score));
+
+        console.log("Security Score:", score);
+        console.log("Issues:", issues);
 
         const scoreValueEl = document.getElementById('scoreValue');
         const scoreDescriptionEl = document.getElementById('scoreDescription');
